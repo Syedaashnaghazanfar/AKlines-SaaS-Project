@@ -7,8 +7,12 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
     globals: true,
-    // The default "forks" pool hangs in this sandboxed environment (process
-    // spawning is restricted); the "threads" pool runs in-process instead.
-    pool: 'threads',
+    // The default "forks" pool hangs in some sandboxed local dev environments
+    // (process spawning restricted), so fall back to "threads" there. CI
+    // (and normal local machines) should use Vitest's default "forks" pool -
+    // "threads" hits a jsdom/Node worker_threads incompatibility there
+    // (`webidl.util.markAsUncloneable is not a function`) that forks avoids
+    // entirely by not using worker_threads' structured-clone messaging.
+    pool: process.env.VITEST_SANDBOXED_ENV ? 'threads' : undefined,
   },
 });

@@ -201,7 +201,7 @@ npm test
 - `src/offline/syncEngine.test.js` covers the generic outbox (`createOutbox()`) against a real in-memory IndexedDB (via `fake-indexeddb`), with only the network (`apiClient`) mocked: idempotency-key stability across retries, conflict (409) vs. failure (4xx) handling, a conflict never blocking the rest of the queue, network errors halting the drain without touching later items, optimistic stock effects for Sales/Purchases, and `syncAll()` draining every entity independently.
 - Component tests (React Testing Library) cover `StatusBadge`, `Pagination`, `Modal`, `ProtectedRoute`'s auth/role redirect logic, and the `Login` page's submit flow (success navigates, failure shows the server's error message).
 
-> Note: Vitest's default `forks` worker pool hangs in some sandboxed/restricted dev environments (process spawning disabled). `vitest.config.js` sets `pool: 'threads'` to work around it — if tests hang with "no tests" and a worker-timeout error, that's the cause.
+> Note: Vitest's default `forks` worker pool hangs in some sandboxed/restricted dev environments (process spawning disabled) — if you hit that (tests hang with "no tests" and a worker-timeout error), run `VITEST_SANDBOXED_ENV=1 npm test` instead; `vitest.config.js` switches to the `threads` pool when that variable is set. Leave it unset on a normal machine or in CI — `threads` fails there with a jsdom/Node worker_threads incompatibility (`webidl.util.markAsUncloneable is not a function`) that `forks` doesn't hit.
 
 **Manual regression checklist** — run through this against a real (throwaway) Postgres database before a production release:
 
