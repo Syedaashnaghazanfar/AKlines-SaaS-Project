@@ -9,6 +9,7 @@ const ENTITY_TABLES = [
   { key: 'customers', tableName: 'pendingCustomers', label: 'Customer' },
   { key: 'suppliers', tableName: 'pendingSuppliers', label: 'Supplier' },
   { key: 'opticalOrders', tableName: 'pendingOpticalOrders', label: 'Optical Order' },
+  { key: 'reversals', tableName: 'pendingReversals', label: 'Sale Reversal' },
 ];
 
 // Reactively reflects every offline outbox combined, so the sync status

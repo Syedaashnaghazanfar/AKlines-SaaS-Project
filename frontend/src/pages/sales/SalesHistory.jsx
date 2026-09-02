@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import apiClient from '../../api/client';
 import Modal from '../../components/Modal';
 import Pagination from '../../components/Pagination';
 import StatusBadge from '../../components/StatusBadge';
 import { Spinner, ErrorAlert, EmptyState, extractErrorMessage } from '../../components/Feedback';
 import { useAuth } from '../../context/AuthContext';
+import { OUTBOXES } from '../../offline/syncEngine';
+import { useSyncStatus } from '../../offline/useSyncStatus';
 
 // Reversal is Management-only server-side (see backend sales.routes.js) -
 // mirrored here only to hide the button for roles who'd get a 403 anyway.
@@ -27,6 +29,30 @@ export default function SalesHistory() {
   const [reversingId, setReversingId] = useState(null);
   const pageSize = 20;
 
+  const { items: syncItems } = useSyncStatus(user?.tenantId);
+  const reversalItems = syncItems.filter((i) => i.entityKey === 'reversals');
+  const queuedSaleIds = new Set(
+    reversalItems.filter((i) => i.status === 'pending' || i.status === 'syncing').map((i) => i.payload.saleId)
+  );
+
+  // Once a queued offline reversal finishes syncing (or lands in conflict),
+  // the sale's real status has changed on the server - reload so the row
+  // reflects it without waiting for the user to manually refresh. Only
+  // terminal states are tracked here - reacting to the initial "pending"
+  // state too would trigger a reload (and a spurious network error) the
+  // instant the user queues a reversal while still offline.
+  const reversalStatusSignature = reversalItems
+    .filter((i) => i.status === 'synced' || i.status === 'conflict')
+    .map((i) => `${i.clientId}:${i.status}`)
+    .join(',');
+  const prevReversalSignatureRef = useRef(reversalStatusSignature);
+  useEffect(() => {
+    if (prevReversalSignatureRef.current !== reversalStatusSignature) {
+      prevReversalSignatureRef.current = reversalStatusSignature;
+      load();
+    }
+  }, [reversalStatusSignature]);
+
   function load() {
     setLoading(true);
     apiClient
@@ -42,9 +68,22 @@ export default function SalesHistory() {
   useEffect(load, [page, search, from, to]);
 
   async function handleReverse(sale) {
-    setReversingId(sale.id);
     setError('');
     setNotice('');
+
+    if (!navigator.onLine) {
+      try {
+        await OUTBOXES.reversals.queue(user.tenantId, { saleId: sale.id, invoiceNumber: sale.invoiceNumber });
+        setNotice(
+          `You're offline - invoice ${sale.invoiceNumber} will be reversed automatically once you're back online.`
+        );
+      } catch (err) {
+        setError(extractErrorMessage(err));
+      }
+      return;
+    }
+
+    setReversingId(sale.id);
     try {
       await apiClient.post(`/sales/${sale.id}/reverse`);
       setNotice(`Invoice ${sale.invoiceNumber} reversed - stock has been restored.`);
@@ -133,13 +172,19 @@ export default function SalesHistory() {
                     <td><StatusBadge status={sale.status} /></td>
                     <td>
                       {canReverse && sale.status === 'COMPLETED' && (
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          disabled={reversingId === sale.id}
-                          onClick={() => handleReverse(sale)}
-                        >
-                          {reversingId === sale.id ? 'Reversing...' : 'Reverse'}
-                        </button>
+                        queuedSaleIds.has(sale.id) ? (
+                          <span className="badge text-bg-warning" title="Will reverse automatically once back online">
+                            Reversal queued
+                          </span>
+                        ) : (
+                          <button
+                            className="btn btn-sm btn-outline-danger"
+                            disabled={reversingId === sale.id}
+                            onClick={() => handleReverse(sale)}
+                          >
+                            {reversingId === sale.id ? 'Reversing...' : 'Reverse'}
+                          </button>
+                        )
                       )}
                     </td>
                   </tr>

@@ -134,6 +134,90 @@ function createOutbox({ tableName, apiPath, applyOptimisticEffect }) {
   return { queue, listPending, sync, retry, discard, submit };
 }
 
+// Builds an outbox for an action against an *existing* server record (e.g.
+// reversing a sale), as opposed to createOutbox() which queues creation of a
+// new one. Differs from createOutbox in three ways: no idempotencyKey is
+// injected (the request has no body - the server identifies the target by
+// ID in the URL and the action is naturally safe to not-retry once synced),
+// no optimistic local effect is applied (the entity being acted on isn't
+// cached locally by this engine), and the request path is built per-entry
+// from its payload rather than fixed.
+function createActionOutbox({ tableName, buildPath }) {
+  async function queue(tenantId, payload) {
+    const db = getOfflineDb(tenantId);
+    const clientId = generateClientId();
+    const entry = { clientId, status: 'pending', createdAt: Date.now(), payload, lastError: null, serverResult: null };
+    await db[tableName].add(entry);
+    return entry;
+  }
+
+  async function listPending(tenantId) {
+    return getOfflineDb(tenantId)[tableName].orderBy('createdAt').toArray();
+  }
+
+  const inFlightPromises = new Map();
+  function sync(tenantId) {
+    if (inFlightPromises.has(tenantId)) return inFlightPromises.get(tenantId);
+    const promise = runSync(tenantId).finally(() => {
+      inFlightPromises.delete(tenantId);
+    });
+    inFlightPromises.set(tenantId, promise);
+    return promise;
+  }
+
+  async function runSync(tenantId) {
+    const db = getOfflineDb(tenantId);
+    const queueItems = await db[tableName].where('status').equals('pending').sortBy('createdAt');
+
+    for (const entry of queueItems) {
+      await db[tableName].update(entry.clientId, { status: 'syncing' });
+      try {
+        const { data } = await apiClient.post(buildPath(entry.payload));
+        await db[tableName].update(entry.clientId, { status: 'synced', serverResult: data.item });
+      } catch (err) {
+        if (err.response?.status === 409) {
+          await db[tableName].update(entry.clientId, {
+            status: 'conflict',
+            lastError: err.response.data?.error || 'Conflict at sync time',
+          });
+          continue;
+        }
+        if (err.response?.status >= 400 && err.response?.status < 500) {
+          await db[tableName].update(entry.clientId, {
+            status: 'failed',
+            lastError: err.response.data?.error || 'Rejected by server',
+          });
+          continue;
+        }
+        await db[tableName].update(entry.clientId, { status: 'pending' });
+        return;
+      }
+    }
+
+    await db.meta.put({ key: `lastSyncAt:${tableName}`, value: Date.now() });
+  }
+
+  async function retry(tenantId, clientId) {
+    await getOfflineDb(tenantId)[tableName].update(clientId, { status: 'pending', lastError: null });
+    return sync(tenantId);
+  }
+
+  async function discard(tenantId, clientId) {
+    await getOfflineDb(tenantId)[tableName].delete(clientId);
+  }
+
+  async function submit(tenantId, payload) {
+    const entry = await queue(tenantId, payload);
+    if (navigator.onLine) {
+      await sync(tenantId);
+      return getOfflineDb(tenantId)[tableName].get(entry.clientId);
+    }
+    return entry;
+  }
+
+  return { queue, listPending, sync, retry, discard, submit };
+}
+
 async function decrementCachedStock(db, payload) {
   for (const line of payload.items) {
     const product = await db.products.get(line.productId);
@@ -167,6 +251,10 @@ const expensesOutbox = createOutbox({ tableName: 'pendingExpenses', apiPath: '/e
 const customersOutbox = createOutbox({ tableName: 'pendingCustomers', apiPath: '/customers' });
 const suppliersOutbox = createOutbox({ tableName: 'pendingSuppliers', apiPath: '/suppliers' });
 const opticalOrdersOutbox = createOutbox({ tableName: 'pendingOpticalOrders', apiPath: '/optical-orders' });
+const reversalsOutbox = createActionOutbox({
+  tableName: 'pendingReversals',
+  buildPath: (payload) => `/sales/${payload.saleId}/reverse`,
+});
 
 export const OUTBOXES = {
   sales: salesOutbox,
@@ -175,6 +263,7 @@ export const OUTBOXES = {
   customers: customersOutbox,
   suppliers: suppliersOutbox,
   opticalOrders: opticalOrdersOutbox,
+  reversals: reversalsOutbox,
 };
 
 // Backwards-compatible named exports (slice 1 API surface, used by Pos.jsx).

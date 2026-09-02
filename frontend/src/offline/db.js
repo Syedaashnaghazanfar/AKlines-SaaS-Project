@@ -39,6 +39,25 @@ export function getOfflineDb(tenantId) {
     meta: 'key',
   });
 
+  // v3: Phase 2 slice 3 - offline queueing for the Sale reversal action.
+  // Unlike the "pending*" create tables, this queues an action against an
+  // *existing* server record (identified by saleId in the payload) rather
+  // than a new one - see createActionOutbox() in syncEngine.js.
+  db.version(3).stores({
+    products: 'id, name, sku, barcode',
+    customers: 'id, name',
+    suppliers: 'id, name',
+    expenseCategories: 'id, name',
+    pendingSales: 'clientId, status, createdAt',
+    pendingPurchases: 'clientId, status, createdAt',
+    pendingExpenses: 'clientId, status, createdAt',
+    pendingCustomers: 'clientId, status, createdAt',
+    pendingSuppliers: 'clientId, status, createdAt',
+    pendingOpticalOrders: 'clientId, status, createdAt',
+    pendingReversals: 'clientId, status, createdAt',
+    meta: 'key',
+  });
+
   dbInstance = db;
   currentTenantId = tenantId;
   return db;

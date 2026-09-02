@@ -30,6 +30,8 @@ function summarize(item) {
       return p.name;
     case 'opticalOrders':
       return `$${Number(p.totalAmount || 0).toFixed(2)}`;
+    case 'reversals':
+      return `Invoice ${p.invoiceNumber}`;
     default:
       return '';
   }

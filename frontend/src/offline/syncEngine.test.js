@@ -196,6 +196,47 @@ describe('optimistic cache effects', () => {
   });
 });
 
+describe('action outbox: reversals', () => {
+  it('queues with no idempotencyKey and posts to the sale-specific reverse path', async () => {
+    const tenantId = freshTenantId();
+    apiClient.post.mockResolvedValueOnce({ data: { item: { id: 'sale-1', status: 'REVERSED' } } });
+
+    const entry = await OUTBOXES.reversals.queue(tenantId, { saleId: 'sale-1', invoiceNumber: 'INV-000001' });
+    expect(entry.payload.idempotencyKey).toBeUndefined();
+
+    await OUTBOXES.reversals.sync(tenantId);
+
+    const stored = await getOfflineDb(tenantId).pendingReversals.get(entry.clientId);
+    expect(stored.status).toBe('synced');
+    expect(apiClient.post).toHaveBeenCalledWith('/sales/sale-1/reverse');
+  });
+
+  it('marks an already-reversed sale (409) as conflict, not failed', async () => {
+    const tenantId = freshTenantId();
+    apiClient.post.mockRejectedValueOnce({
+      response: { status: 409, data: { error: 'Sale has already been reversed' } },
+    });
+
+    const entry = await OUTBOXES.reversals.queue(tenantId, { saleId: 'sale-1', invoiceNumber: 'INV-000001' });
+    await OUTBOXES.reversals.sync(tenantId);
+
+    const stored = await getOfflineDb(tenantId).pendingReversals.get(entry.clientId);
+    expect(stored.status).toBe('conflict');
+    expect(stored.lastError).toBe('Sale has already been reversed');
+  });
+
+  it('a network error leaves it pending for the next sync attempt', async () => {
+    const tenantId = freshTenantId();
+    apiClient.post.mockRejectedValueOnce(new TypeError('network down'));
+
+    const entry = await OUTBOXES.reversals.queue(tenantId, { saleId: 'sale-1', invoiceNumber: 'INV-000001' });
+    await OUTBOXES.reversals.sync(tenantId);
+
+    const stored = await getOfflineDb(tenantId).pendingReversals.get(entry.clientId);
+    expect(stored.status).toBe('pending');
+  });
+});
+
 describe('syncAll', () => {
   it('drains every entity outbox for the given tenant independently', async () => {
     const tenantId = freshTenantId();
