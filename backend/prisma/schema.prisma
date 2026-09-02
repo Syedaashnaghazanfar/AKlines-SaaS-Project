@@ -1,0 +1,566 @@
+// AK VisionFlow - Phase 1 Data Model
+// Multi-tenant optical/eyecare retail ERP.
+// Every tenant-owned table carries tenantId and is always queried scoped to it.
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" covers local dev on Windows/Mac/Linux; the musl-openssl-3.0.x
+  // target is required for the Alpine-based Docker image (backend/Dockerfile),
+  // which ships OpenSSL 3, not the 1.1 that Prisma's default musl engine expects.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Platform / Tenancy
+// ---------------------------------------------------------------------------
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+model Tenant {
+  id           String   @id @default(uuid())
+  name         String
+  businessName String
+  email        String?
+  phone        String?
+  address      String?
+  logoUrl      String?
+  timezone     String   @default("UTC")
+  currency     String   @default("USD")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscription     Subscription?
+  branches         Branch[]
+  users            User[]
+  settings         Setting[]
+  categories       Category[]
+  products         Product[]
+  customers        Customer[]
+  suppliers        Supplier[]
+  purchases        Purchase[]
+  sales            Sale[]
+  inventoryTxns    InventoryTransaction[]
+  opticalOrders    OpticalOrder[]
+  payments         Payment[]
+  expenses         Expense[]
+  expenseCategories ExpenseCategory[]
+  auditLogs        AuditLog[]
+
+  @@map("tenants")
+}
+
+// Foundation only - full billing UI is Phase 3.
+model Subscription {
+  id        String             @id @default(uuid())
+  tenantId  String             @unique
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan      String             @default("trial")
+  status    SubscriptionStatus @default(TRIAL)
+  trialEndsAt DateTime?
+  currentPeriodEnd DateTime?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  address   String?
+  phone     String?
+  isMain    Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+
+  @@index([tenantId])
+  @@map("branches")
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, key])
+  @@map("settings")
+}
+
+// ---------------------------------------------------------------------------
+// Users, Roles, Auth
+// ---------------------------------------------------------------------------
+
+enum RoleName {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  MANAGER
+  CASHIER
+  STORE_KEEPER
+  RECEPTIONIST
+  ACCOUNTANT
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String?  // null only for SUPER_ADMIN platform users
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchId     String?
+  branch       Branch?  @relation(fields: [branchId], references: [id])
+  name         String
+  email        String
+  passwordHash String
+  role         RoleName @default(CASHIER)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs    AuditLog[]
+  sales        Sale[]        @relation("SaleCashier")
+  purchases    Purchase[]    @relation("PurchaseCreatedBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Products / Inventory
+// ---------------------------------------------------------------------------
+
+enum ProductType {
+  GENERAL
+  MEDICINE
+  FRAME
+  LENS
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products  Product[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("categories")
+}
+
+model Product {
+  id              String      @id @default(uuid())
+  tenantId        String
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId      String?
+  category        Category?   @relation(fields: [categoryId], references: [id])
+  type            ProductType @default(GENERAL)
+  name            String
+  sku             String?
+  barcode         String?
+  description     String?
+  purchasePrice   Decimal     @default(0) @db.Decimal(12, 2)
+  sellingPrice    Decimal     @default(0) @db.Decimal(12, 2)
+  stockQuantity   Decimal     @default(0) @db.Decimal(12, 2)
+  lowStockThreshold Decimal   @default(0) @db.Decimal(12, 2)
+  unit            String      @default("pcs")
+
+  // Frame-specific
+  frameBrand      String?
+  frameModel      String?
+  frameColor      String?
+  frameSize       String?
+
+  // Lens-specific
+  lensType        String?
+  lensMaterial    String?
+  lensCoating     String?
+
+  // Medicine-specific
+  batchNumber     String?
+  expiryDate      DateTime?
+
+  isActive        Boolean     @default(true)
+  archivedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  purchaseItems   PurchaseItem[]
+  saleItems       SaleItem[]
+  inventoryTxns   InventoryTransaction[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([tenantId, barcode])
+  @@index([tenantId, type])
+  @@map("products")
+}
+
+enum InventoryTxnType {
+  OPENING_STOCK
+  PURCHASE_RECEIVE
+  SALE_DEDUCTION
+  SALE_REVERSAL
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+}
+
+model InventoryTransaction {
+  id          String           @id @default(uuid())
+  tenantId    String
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product          @relation(fields: [productId], references: [id])
+  type        InventoryTxnType
+  quantity    Decimal          @db.Decimal(12, 2) // positive = in, negative = out
+  balanceAfter Decimal         @db.Decimal(12, 2)
+  reference   String?          // e.g. sale/purchase id
+  note        String?
+  createdById String?
+  createdAt   DateTime         @default(now())
+
+  @@index([tenantId, productId])
+  @@map("inventory_transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Customers / Suppliers
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  // Client-generated key for offline-created records - lets a retried sync
+  // (after a dropped connection) be recognized as the same create instead of
+  // producing a duplicate. Null for records created while online.
+  idempotencyKey String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales         Sale[]
+  opticalOrders OpticalOrder[]
+  payments      Payment[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@map("customers")
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  idempotencyKey String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases Purchase[]
+  payments  Payment[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+// ---------------------------------------------------------------------------
+// Purchases
+// ---------------------------------------------------------------------------
+
+enum PurchaseStatus {
+  DRAFT
+  RECEIVED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+model Purchase {
+  id            String         @id @default(uuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplierId    String
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  purchaseNumber String
+  status        PurchaseStatus @default(DRAFT)
+  paymentStatus PaymentStatus  @default(UNPAID)
+  subtotal      Decimal        @db.Decimal(12, 2) @default(0)
+  discount      Decimal        @db.Decimal(12, 2) @default(0)
+  total         Decimal        @db.Decimal(12, 2) @default(0)
+  amountPaid    Decimal        @db.Decimal(12, 2) @default(0)
+  receivedAt    DateTime?
+  createdById   String?
+  createdBy     User?          @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
+  idempotencyKey String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  items    PurchaseItem[]
+  payments Payment[]
+
+  @@unique([tenantId, purchaseNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id          String   @id @default(uuid())
+  purchaseId  String
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  quantity    Decimal  @db.Decimal(12, 2)
+  unitCost    Decimal  @db.Decimal(12, 2)
+  lineTotal   Decimal  @db.Decimal(12, 2)
+
+  @@index([purchaseId])
+  @@map("purchase_items")
+}
+
+// ---------------------------------------------------------------------------
+// Sales / POS
+// ---------------------------------------------------------------------------
+
+enum SaleStatus {
+  COMPLETED
+  REVERSED
+}
+
+model Sale {
+  id            String        @id @default(uuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  invoiceNumber String
+  status        SaleStatus    @default(COMPLETED)
+  paymentStatus PaymentStatus @default(PAID)
+  subtotal      Decimal       @db.Decimal(12, 2) @default(0)
+  discount      Decimal       @db.Decimal(12, 2) @default(0)
+  tax           Decimal       @db.Decimal(12, 2) @default(0)
+  total         Decimal       @db.Decimal(12, 2) @default(0)
+  amountPaid    Decimal       @db.Decimal(12, 2) @default(0)
+  paymentMethod String        @default("cash")
+  cashierId     String?
+  cashier       User?         @relation("SaleCashier", fields: [cashierId], references: [id])
+  idempotencyKey String?      // client-generated, for future sync/idempotency
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  items    SaleItem[]
+  payments Payment[]
+
+  @@unique([tenantId, invoiceNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@map("sales")
+}
+
+model SaleItem {
+  id         String  @id @default(uuid())
+  saleId     String
+  sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product @relation(fields: [productId], references: [id])
+  quantity   Decimal @db.Decimal(12, 2)
+  unitPrice  Decimal @db.Decimal(12, 2)
+  discount   Decimal @db.Decimal(12, 2) @default(0)
+  lineTotal  Decimal @db.Decimal(12, 2)
+
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+// ---------------------------------------------------------------------------
+// Optical Orders
+// ---------------------------------------------------------------------------
+
+enum OpticalOrderStatus {
+  PENDING
+  IN_LAB
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+model OpticalOrder {
+  id            String             @id @default(uuid())
+  tenantId      String
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      Customer           @relation(fields: [customerId], references: [id])
+  orderNumber   String
+  status        OpticalOrderStatus @default(PENDING)
+  frameDescription String?
+  lensDescription  String?
+  totalAmount   Decimal            @db.Decimal(12, 2) @default(0)
+  amountPaid    Decimal            @db.Decimal(12, 2) @default(0)
+  expectedDeliveryDate DateTime?
+  deliveredAt   DateTime?
+  notes         String?
+  idempotencyKey String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  prescription  Prescription?
+  payments      Payment[]
+
+  @@unique([tenantId, orderNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@map("optical_orders")
+}
+
+model Prescription {
+  id             String       @id @default(uuid())
+  opticalOrderId String       @unique
+  opticalOrder   OpticalOrder @relation(fields: [opticalOrderId], references: [id], onDelete: Cascade)
+
+  // Right eye
+  odSphere   Decimal? @db.Decimal(5, 2)
+  odCylinder Decimal? @db.Decimal(5, 2)
+  odAxis     Int?
+  odAdd      Decimal? @db.Decimal(5, 2)
+
+  // Left eye
+  osSphere   Decimal? @db.Decimal(5, 2)
+  osCylinder Decimal? @db.Decimal(5, 2)
+  osAxis     Int?
+  osAdd      Decimal? @db.Decimal(5, 2)
+
+  pd         Decimal? @db.Decimal(5, 2) // pupillary distance
+  prescribedBy String?
+  prescribedAt DateTime?
+  notes        String?
+
+  @@map("prescriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Payments / Expenses
+// ---------------------------------------------------------------------------
+
+enum PaymentDirection {
+  IN  // received from customer
+  OUT // paid to supplier / expense
+}
+
+model Payment {
+  id          String           @id @default(uuid())
+  tenantId    String
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  direction   PaymentDirection
+  amount      Decimal          @db.Decimal(12, 2)
+  method      String           @default("cash")
+  saleId      String?
+  sale        Sale?            @relation(fields: [saleId], references: [id])
+  purchaseId  String?
+  purchase    Purchase?        @relation(fields: [purchaseId], references: [id])
+  customerId  String?
+  customer    Customer?        @relation(fields: [customerId], references: [id])
+  supplierId  String?
+  supplier    Supplier?        @relation(fields: [supplierId], references: [id])
+  expenseId   String?          @unique
+  expense     Expense?         @relation(fields: [expenseId], references: [id])
+  opticalOrderId String?
+  opticalOrder   OpticalOrder? @relation(fields: [opticalOrderId], references: [id])
+  note        String?
+  paidAt      DateTime         @default(now())
+  createdAt   DateTime         @default(now())
+
+  @@index([tenantId])
+  @@map("payments")
+}
+
+model ExpenseCategory {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses  Expense[]
+
+  @@unique([tenantId, name])
+  @@map("expense_categories")
+}
+
+model Expense {
+  id          String          @id @default(uuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id])
+  amount      Decimal         @db.Decimal(12, 2)
+  description String?
+  expenseDate DateTime        @default(now())
+  idempotencyKey String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  payment     Payment?
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@map("expenses")
+}
+
+// ---------------------------------------------------------------------------
+// Audit Log
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // e.g. "LOGIN", "SALE_CREATE", "STOCK_ADJUST"
+  entity    String?  // e.g. "Sale", "Product"
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}

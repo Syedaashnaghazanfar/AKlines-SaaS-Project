@@ -1,0 +1,33 @@
+// Central role groupings used by route-level requireRole() checks.
+// Keeping these as named groups (rather than repeating role lists at every
+// route) is the single source of truth for "who can do what" server-side.
+
+const ALL_ROLES = [
+  'SUPER_ADMIN',
+  'TENANT_ADMIN',
+  'MANAGER',
+  'CASHIER',
+  'STORE_KEEPER',
+  'RECEPTIONIST',
+  'ACCOUNTANT',
+];
+
+const TENANT_ADMIN_ONLY = ['TENANT_ADMIN'];
+const MANAGEMENT = ['TENANT_ADMIN', 'MANAGER'];
+const INVENTORY_STAFF = ['TENANT_ADMIN', 'MANAGER', 'STORE_KEEPER'];
+const SALES_STAFF = ['TENANT_ADMIN', 'MANAGER', 'CASHIER'];
+const FRONT_DESK = ['TENANT_ADMIN', 'MANAGER', 'RECEPTIONIST'];
+const FINANCE_STAFF = ['TENANT_ADMIN', 'MANAGER', 'ACCOUNTANT'];
+// Contact records are read/used across almost every desk in the shop.
+const CONTACTS_STAFF = ['TENANT_ADMIN', 'MANAGER', 'CASHIER', 'STORE_KEEPER', 'RECEPTIONIST', 'ACCOUNTANT'];
+
+module.exports = {
+  ALL_ROLES,
+  TENANT_ADMIN_ONLY,
+  MANAGEMENT,
+  INVENTORY_STAFF,
+  SALES_STAFF,
+  FRONT_DESK,
+  FINANCE_STAFF,
+  CONTACTS_STAFF,
+};
