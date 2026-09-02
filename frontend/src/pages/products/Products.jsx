@@ -226,13 +226,13 @@ export default function Products() {
             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
               Cancel
             </button>
-            <button className="btn btn-primary" disabled={saving} onClick={handleSave}>
+            <button type="submit" form="product-form" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>
         }
       >
-        <form onSubmit={handleSave}>
+        <form onSubmit={handleSave} id="product-form">
           <div className="row g-2">
             <div className="col-md-6">
               <label className="form-label">Name</label>
@@ -338,13 +338,13 @@ export default function Products() {
             <button className="btn btn-secondary" onClick={() => setAdjustProduct(null)}>
               Cancel
             </button>
-            <button className="btn btn-primary" onClick={handleAdjust}>
+            <button type="submit" form="adjust-stock-form" className="btn btn-primary">
               Apply
             </button>
           </>
         }
       >
-        <form onSubmit={handleAdjust}>
+        <form onSubmit={handleAdjust} id="adjust-stock-form">
           <p className="text-body-secondary">Current stock: {adjustProduct && Number(adjustProduct.stockQuantity)}</p>
           <div className="mb-2">
             <label className="form-label">Quantity (use negative to reduce)</label>

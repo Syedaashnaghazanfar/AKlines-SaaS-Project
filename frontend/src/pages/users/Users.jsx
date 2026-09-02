@@ -103,13 +103,13 @@ export default function Users() {
             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
               Cancel
             </button>
-            <button className="btn btn-primary" disabled={saving} onClick={handleSave}>
+            <button type="submit" form="user-form" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>
         }
       >
-        <form onSubmit={handleSave}>
+        <form onSubmit={handleSave} id="user-form">
           <div className="mb-2">
             <label className="form-label">Name</label>
             <input className="form-control" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

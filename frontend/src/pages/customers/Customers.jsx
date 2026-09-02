@@ -130,7 +130,7 @@ export default function Customers() {
             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
               Cancel
             </button>
-            <button className="btn btn-primary" disabled={saving} onClick={handleSave}>
+            <button type="submit" form="customer-form" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>

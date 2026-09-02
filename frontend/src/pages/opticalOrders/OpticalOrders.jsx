@@ -183,13 +183,13 @@ export default function OpticalOrders() {
             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
               Cancel
             </button>
-            <button className="btn btn-primary" disabled={saving || !form.customerId} onClick={handleSave}>
+            <button type="submit" form="optical-order-form" className="btn btn-primary" disabled={saving || !form.customerId}>
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>
         }
       >
-        <form onSubmit={handleSave}>
+        <form onSubmit={handleSave} id="optical-order-form">
           <div className="mb-2">
             <label className="form-label">Customer</label>
             <select className="form-select" required value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>

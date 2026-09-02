@@ -176,13 +176,13 @@ export default function Purchases() {
             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
               Cancel
             </button>
-            <button className="btn btn-primary" disabled={saving || !supplierId} onClick={handleSave}>
+            <button type="submit" form="purchase-form" className="btn btn-primary" disabled={saving || !supplierId}>
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>
         }
       >
-        <form onSubmit={handleSave}>
+        <form onSubmit={handleSave} id="purchase-form">
           <div className="mb-2">
             <label className="form-label">Supplier</label>
             <select className="form-select" required value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>

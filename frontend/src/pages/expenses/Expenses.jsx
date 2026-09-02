@@ -154,13 +154,13 @@ export default function Expenses() {
             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
               Cancel
             </button>
-            <button className="btn btn-primary" disabled={saving || !form.categoryId} onClick={handleSave}>
+            <button type="submit" form="expense-form" className="btn btn-primary" disabled={saving || !form.categoryId}>
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>
         }
       >
-        <form onSubmit={handleSave}>
+        <form onSubmit={handleSave} id="expense-form">
           <div className="mb-2">
             <label className="form-label">Category</label>
             <select className="form-select" required value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
@@ -196,13 +196,13 @@ export default function Expenses() {
             <button className="btn btn-secondary" onClick={() => setShowCatModal(false)}>
               Cancel
             </button>
-            <button className="btn btn-primary" onClick={handleSaveCategory}>
+            <button type="submit" form="expense-category-form" className="btn btn-primary">
               Save
             </button>
           </>
         }
       >
-        <form onSubmit={handleSaveCategory}>
+        <form onSubmit={handleSaveCategory} id="expense-category-form">
           <label className="form-label">Name</label>
           <input className="form-control" required value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
         </form>
