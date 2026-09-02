@@ -1,5 +1,7 @@
 # AK VisionFlow
 
+[![CI](https://github.com/Syedaashnaghazanfar/AKlines-SaaS-Project/actions/workflows/ci.yml/badge.svg)](https://github.com/Syedaashnaghazanfar/AKlines-SaaS-Project/actions/workflows/ci.yml)
+
 **A multi-tenant SaaS ERP for optical shops, eye clinics, medical stores, and lens laboratories.**
 
 AK VisionFlow replaces manual registers and spreadsheets with a single connected platform for inventory, sales, customers, suppliers, optical prescriptions and orders, payments, and reporting. Any number of unrelated shops can subscribe to it, each operating in complete data isolation on the same shared codebase.
@@ -180,6 +182,10 @@ Take a backup before every migration deploy against a production database, and t
 
 ## Testing
 
+**Continuous Integration:** every push and PR to `main` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which:
+- installs the backend, runs `npm test`, then runs `npx prisma migrate deploy` against a fresh Postgres service container — proving every committed migration actually applies cleanly from scratch, not just that the app code passes its own tests;
+- installs the frontend, runs lint, `npm test`, and a production build.
+
 **Backend:**
 ```bash
 cd backend
@@ -187,12 +193,13 @@ npm test
 ```
 `tests/api.test.js` verifies routing, auth/RBAC gating (every protected endpoint rejects unauthenticated requests), request validation, and error-response shaping — none of which require a live database.
 
-**Frontend (offline sync engine):**
+**Frontend:**
 ```bash
 cd frontend
 npm test
 ```
-`src/offline/syncEngine.test.js` covers the generic outbox (`createOutbox()`) against a real in-memory IndexedDB (via `fake-indexeddb`), with only the network (`apiClient`) mocked: idempotency-key stability across retries, conflict (409) vs. failure (4xx) handling, a conflict never blocking the rest of the queue, network errors halting the drain without touching later items, optimistic stock effects for Sales/Purchases, and `syncAll()` draining every entity independently.
+- `src/offline/syncEngine.test.js` covers the generic outbox (`createOutbox()`) against a real in-memory IndexedDB (via `fake-indexeddb`), with only the network (`apiClient`) mocked: idempotency-key stability across retries, conflict (409) vs. failure (4xx) handling, a conflict never blocking the rest of the queue, network errors halting the drain without touching later items, optimistic stock effects for Sales/Purchases, and `syncAll()` draining every entity independently.
+- Component tests (React Testing Library) cover `StatusBadge`, `Pagination`, `Modal`, `ProtectedRoute`'s auth/role redirect logic, and the `Login` page's submit flow (success navigates, failure shows the server's error message).
 
 > Note: Vitest's default `forks` worker pool hangs in some sandboxed/restricted dev environments (process spawning disabled). `vitest.config.js` sets `pool: 'threads'` to work around it — if tests hang with "no tests" and a worker-timeout error, that's the cause.
 
