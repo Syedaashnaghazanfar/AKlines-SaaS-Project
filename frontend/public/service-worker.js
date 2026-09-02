@@ -1,7 +1,7 @@
 // Phase 1 PWA foundation - caches the static app shell so the app can install
 // and reopen while offline. Deliberately does NOT cache or queue API/data
 // requests: full offline transactions and sync are Phase 2 work.
-const CACHE_NAME = 'akvisionflow-shell-v1';
+const CACHE_NAME = 'akvisionflow-shell-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -24,18 +24,19 @@ self.addEventListener('fetch', (event) => {
   // Never cache API calls - all business data must come from the network.
   if (url.pathname.startsWith('/api/')) return;
 
+  // Network-first, cache fallback. A cache-first strategy here would mean a
+  // deployed update never reaches an already-installed app until the user
+  // manually clears their cache - the whole point of shipping a fix is that
+  // it should be visible on the next normal reload while online.
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(request)
+      .then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request))
   );
 });

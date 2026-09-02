@@ -12,6 +12,7 @@ import Customers from './pages/customers/Customers';
 import Suppliers from './pages/suppliers/Suppliers';
 import Purchases from './pages/purchases/Purchases';
 import Pos from './pages/sales/Pos';
+import SalesHistory from './pages/sales/SalesHistory';
 import OpticalOrders from './pages/opticalOrders/OpticalOrders';
 import Expenses from './pages/expenses/Expenses';
 import Reports from './pages/reports/Reports';
@@ -39,6 +40,14 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['TENANT_ADMIN', 'MANAGER', 'CASHIER']}>
                     <Pos />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sales-history"
+                element={
+                  <ProtectedRoute roles={['TENANT_ADMIN', 'MANAGER', 'CASHIER']}>
+                    <SalesHistory />
                   </ProtectedRoute>
                 }
               />

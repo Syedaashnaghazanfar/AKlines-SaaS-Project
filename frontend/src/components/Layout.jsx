@@ -8,6 +8,7 @@ import { syncAll } from '../offline/syncEngine';
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', roles: null },
   { to: '/pos', label: 'POS / Sales', roles: ['TENANT_ADMIN', 'MANAGER', 'CASHIER'] },
+  { to: '/sales-history', label: 'Sales History', roles: ['TENANT_ADMIN', 'MANAGER', 'CASHIER'] },
   { to: '/products', label: 'Products', roles: ['TENANT_ADMIN', 'MANAGER', 'STORE_KEEPER', 'CASHIER', 'RECEPTIONIST', 'ACCOUNTANT'] },
   { to: '/purchases', label: 'Purchases', roles: ['TENANT_ADMIN', 'MANAGER', 'STORE_KEEPER'] },
   { to: '/customers', label: 'Customers', roles: null },
