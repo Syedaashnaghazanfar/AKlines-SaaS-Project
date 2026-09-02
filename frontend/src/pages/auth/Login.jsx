@@ -34,12 +34,13 @@ export default function Login() {
           <ErrorAlert message={error} />
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
-              <label className="form-label">Email</label>
-              <input type="email" className="form-control" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <label htmlFor="login-email" className="form-label">Email</label>
+              <input id="login-email" type="email" className="form-control" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div className="mb-3">
-              <label className="form-label">Password</label>
+              <label htmlFor="login-password" className="form-label">Password</label>
               <input
+                id="login-password"
                 type="password"
                 className="form-control"
                 required
